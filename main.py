@@ -23,7 +23,11 @@ def main(K, L_w, T, r_w, n, theta_i, T_on, Qw_on, I=1, eps_R=0.01, eps_h=0.01, t
     :param Nz: number of vertical slices along well [-]
     :param RK: number of Runge–Kutta sections [-]
     :param PSI_i: initial matric head [m]
-    :return: None
+    :return:
+        R_plot, Z_plot: radius and vertical location of wetting front at times to plot [m]
+        zspan: the vertical slices locations [m]
+        hw_all: head at well, for any time in t [m]
+        t: times at which hw_all is given [min]
     """
     assert K > 0
     assert L_w > 0
@@ -88,10 +92,10 @@ def main(K, L_w, T, r_w, n, theta_i, T_on, Qw_on, I=1, eps_R=0.01, eps_h=0.01, t
         Z_vert_fl = np.flip(Z_vert_origin).T  # Todo:remove .T
         R_vert_fl = r_w * np.ones((time_int, len(t_to_show)))
         for i, t_to_show_now in enumerate(t_to_show):
-            idx_of_t_toshow_now = np.argwhere(t >= t_to_show_now)[0]  # todo: what if this fails? do something
-            R_vert_fl_tmp = np.flip(R_vertical[:idx_of_t_toshow_now])
-            R_vert_fl[:idx_of_t_toshow_now, i] = R_vert_fl_tmp.T  # not sure this will work
-            R_plot = np.concatenate((R_vert_fl, R_all[:, idx_of_t_toshow_now], ))
+            idx_of_t_to_show_now = np.argwhere(t >= t_to_show_now)[0]  # todo: what if this fails? do something
+            R_vert_fl_tmp = np.flip(R_vertical[:idx_of_t_to_show_now])
+            R_vert_fl[:idx_of_t_to_show_now, i] = R_vert_fl_tmp.T  # not sure this will work
+            R_plot = np.concatenate((R_vert_fl, R_all[:, idx_of_t_to_show_now],))
             Z_plot = np.concatenate((Z_vert_fl.T, zspan, ))
     return R_plot, Z_plot, zspan, hw_all, t
 
