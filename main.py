@@ -36,8 +36,8 @@ def main(K, L_w, T, r_w, n, theta_i, T_on, Qw_on, I=1, eps_R=0.01, eps_h=0.01, t
     K_h = K  # horizontal conductivity
     K_v = K / I  # vertical conductivity
     A = np.pi * r_w ** 2
-    WI = (1 + EPSILON) - PSI_i / (L_w - PSI_i)  # well index, used to set the initial wetting radius
-    # todo: find a better name for WI...
+    r_initial = (1 + EPSILON) - PSI_i / (L_w - PSI_i)
+    # initial relative wetting radius (r_initial > 1, but not much larger than 1)
     dt_max = A / (EXAGGERATION_FACTOR * 2 * np.pi * K_h * (L_w - PSI_i))
     if T/time_int > dt_max:
         time_int = int(np.ceil(T / dt_max))  #TODO: call time_int with different name
@@ -65,14 +65,16 @@ def main(K, L_w, T, r_w, n, theta_i, T_on, Qw_on, I=1, eps_R=0.01, eps_h=0.01, t
         R = R_all[:, ti]
         Z = Z_vertical[ti]
 
-        next_hw, next_R, next_Q_spill, next_Z, next_zR, dt2 = compute(dt, Qw, A, K_h, K_v, hw, R, r_w, zspan, L_w,
-                                                                      n, theta_i, Z, PSI_i, WI, eps_R, eps_h, RK)
+        next_hw, next_R, next_Q_spill, next_Z, next_zR, dt2 = \
+            compute(dt, Qw, A, K_h, K_v, hw, R, r_w, zspan, L_w, n, theta_i, Z, PSI_i,
+                    r_initial, eps_R, eps_h, RK)
         # todo: chg to "compute_timestep"
         if dt2 < dt:
             dt2_2 = dt2
             while dt2_2 <= dt:
                 next_hw, next_R, next_Q_spill, next_Z, next_zR, dt2 = \
-                    compute(dt2, Qw, A, K_h, K_v, next_hw, next_R, r_w, zspan, L_w, n, theta_i, next_Z, PSI_i, WI, eps_R, eps_h,RK)
+                    compute(dt2, Qw, A, K_h, K_v, next_hw, next_R, r_w, zspan, L_w, n, theta_i, next_Z, PSI_i,
+                            r_initial, eps_R, eps_h,RK)
                 dt2_2 = dt2_2 + dt2
         hw_all[ti + 1] = next_hw
         R_all[:, ti + 1] = next_R
