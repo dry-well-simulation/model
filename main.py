@@ -6,7 +6,7 @@ EXAGGERATION_FACTOR = 10
 
 
 def main(K, L_w, T, r_w, n, theta_i, T_on, Qw_on, I=1, eps_R=0.01, eps_h=0.01, time_int=1000, Nz=100, RK=4, PSI_i=0, t_to_show=None):
-    """
+    """ example ziv
     perform the entire calculation of the well recharge
     :param K: horizontal hydraulic conductivity [m/min]
     :param L_w: well's length [m]
