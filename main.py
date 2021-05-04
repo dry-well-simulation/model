@@ -16,7 +16,7 @@ def main(K, L_w, T, r_w, n, theta_i, T_on, Qw_on, I=1, eps_R=0.01, eps_h=0.01, t
     :param theta_i: initial water content [-]
     :param T_on: time in which injection is on [min]
     :param Qw_on: discharge into the well when the discharge is on [m^3/min]
-    :param I:  anisotropy ration [-]
+    :param I:  anisotropy ratio [-]
     :param eps_R: wetting front location tolerance [-]
     :param eps_h:  well water level tolerance [-]
     :param time_int: number of time intervals [-]
