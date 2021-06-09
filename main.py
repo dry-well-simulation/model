@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 
 if __name__ == '__main__':
-    # example run
+    # example run to test
     R_plot, Z_plot, zspan, hw_all, t = \
         core_simulation(K=5/24/60, L_w=10, T=400, r_w=0.2, n=0.3,
                         theta_i=0.1, T_on=30, Qw_on=30/60, Nt=1000)
