@@ -2,6 +2,123 @@ from numpy import pi
 import numpy as np
 
 
+EPSILON = 0.01
+EXAGGERATION_FACTOR = 10
+
+
+def core_simulation(horiz_cond, well_length, simulation_time, well_radius, porosity, initial_VWC, recharge_duration,
+                    recharge_rate, anisotropy_ratio=1, tol_radius=0.01, tol_head=0.01, n_time_steps=1000,
+                    n_vertical_slices=100, RungeKutta_sections=4, initial_matric_head=0, output_times=None):
+    """
+    Perform the entire calculation of the dry well recharge, for specified parameters.
+    The units are written here as [m] and [min], but in practice they can be whatever
+    length/ time units, as long as you are consistent.
+    :param horiz_cond: float, horizontal hydraulic conductivity [m/min]
+    :param well_length: float, the length of the well, assumed to be screened throughout  [m]
+    :param simulation_time: float, total simulation time [min]
+    :param well_radius: float, well's radius [m]
+    :param porosity:  float, porosity [-]
+    :param initial_VWC: float, initial volumetric water content [-]
+    :param recharge_duration: float, time in which injection is on [min] # todo: make it possible to input nd array
+    :param recharge_rate: discharge into the well when the discharge is on [m^3/min]
+                        # todo: make it possible to input nd array
+    :param anisotropy_ratio: float, the ratio of horizontal to vertical hydraulic conductivity [-]
+    :param tol_radius: float, wetting front location tolerance [-]
+    :param tol_head: float,  well water level tolerance [-]
+    :param n_time_steps: float, number of time steps during simulation [-]
+    :param n_vertical_slices: float, number of vertical slices along well [-]
+    :param RungeKutta_sections: int, number of Runge–Kutta sections [-]
+    :param initial_matric_head: float, initial matric head [m]
+    :param output_times:  float or nd array, the time(s) at which output is saved and returned [min]
+                          if None, will use a default set.
+    :return:
+        R_plot, Z_plot: radius and vertical location of wetting front at times to plot [m]
+        zspan: the vertical slices locations [m]
+        hw_all: head at well, for any time in t [m]
+        t: times at which hw_all is given [min]
+    """
+    assert horiz_cond > 0
+    assert well_length > 0
+    assert isinstance(n_vertical_slices, int)
+    assert initial_matric_head <= 0
+    vert_cond = horiz_cond / anisotropy_ratio  # vertical conductivity
+    well_section_area = np.pi * well_radius ** 2
+    r_initial = (1 + EPSILON) - initial_matric_head / (well_length - initial_matric_head)
+    # initial relative wetting radius (r_initial > 1, but not much larger than 1)
+    dt_max = well_section_area / (EXAGGERATION_FACTOR * 2 * np.pi * horiz_cond * (well_length - initial_matric_head))
+    if simulation_time / n_time_steps > dt_max:
+        n_time_steps = int(np.ceil(simulation_time / dt_max))
+    t = np.linspace(0, simulation_time, n_time_steps)
+    dt_all = np.diff(t)
+    dz_max = recharge_duration * recharge_rate / (EXAGGERATION_FACTOR * 2 * np.pi * well_radius * (well_length - initial_matric_head))
+    if well_length / n_vertical_slices > dz_max:
+        n_vertical_slices = int(np.ceil(well_length / dz_max))
+    zspan = np.linspace(0, well_length, n_vertical_slices)  # TODO: chg name
+
+    Qw_all = np.where(t <= recharge_duration, recharge_rate, 0)
+    hw_all = np.zeros((n_time_steps,))  # TODO: change to np.nan ?
+    Q_spill = np.zeros((n_time_steps,))  # TODO: change to np.nan ?
+    V_total = np.zeros((n_time_steps,))  # TODO: change to np.nan ?
+    V_pm = np.zeros((n_time_steps,))  # TODO: change to np.nan ?
+    R_all = np.zeros((n_vertical_slices, n_time_steps))  # TODO: change to np.nan ?
+    R_all[:, 0] = well_radius
+    Z_vertical = np.zeros((n_time_steps,))  # TODO: change to np.nan ?
+    R_vertical = well_radius * np.ones((n_time_steps,))  # TODO: change to np.nan ?
+
+    for ti in range(n_time_steps - 1):
+        dt = dt_all[ti]
+        Qw = (Qw_all[ti] + Qw_all[ti+1]) / 2  # present Qw
+        hw = hw_all[ti]
+        R = R_all[:, ti]
+        Z = Z_vertical[ti]
+
+        next_hw, next_R, next_Q_spill, next_Z, next_zR, dt2 = \
+            compute(dt, Qw, well_section_area, horiz_cond, vert_cond, hw, R, well_radius, zspan, well_length, porosity, initial_VWC, Z, initial_matric_head,
+                    r_initial, tol_radius, tol_head, RungeKutta_sections)
+        # todo: chg to "compute_timestep"
+        if dt2 < dt:
+            dt2_2 = dt2
+            while dt2_2 <= dt:
+                next_hw, next_R, next_Q_spill, next_Z, next_zR, dt2 = \
+                    compute(dt2, Qw, well_section_area, horiz_cond, vert_cond, next_hw, next_R, well_radius, zspan, well_length, porosity, initial_VWC, next_Z, initial_matric_head,
+                            r_initial, tol_radius, tol_head, RungeKutta_sections)
+                dt2_2 = dt2_2 + dt2
+        hw_all[ti + 1] = next_hw
+        R_all[:, ti + 1] = next_R
+        Q_spill[ti + 1] = next_Q_spill
+        Z_vertical[ti + 1] = next_Z
+        R_vertical[ti + 1] = next_zR
+        V_total[ti + 1] = V_total[ti] + Qw * dt # total volume of water that was recharged into the well
+        V_pm[ti + 1] = V_total[ti + 1] - next_hw * well_section_area # water volume in porous media is total vol. minus vol. in well.
+
+    Z_vert_origin = Z_vertical - max(Z_vertical) # construct the vertical flow as a reconstruction of the bottom R ????
+    # R_v = R_all[0, :]
+
+    if output_times is None:
+        output_times = np.array([33, 90, 120, 180, 360]) #  times to show in figure
+        # todo: make it relative to T_on, not abs values
+    # h_w = hw_all
+    Z_vert_fl = np.flip(Z_vert_origin)
+    R_vert_fl = well_radius * np.ones((n_time_steps, len(output_times)))
+    R_plot = dict()
+    Z_plot = dict()
+    for i, t_to_show_now in enumerate(output_times):
+        idx_of_t_to_show_now = np.argwhere(t >= t_to_show_now)[0][0]  # todo: what if this fails? do something
+        R_vert_fl_tmp = np.flip(R_vertical[:idx_of_t_to_show_now])
+        R_vert_fl[:idx_of_t_to_show_now, i] = R_vert_fl_tmp  # not sure this will work
+        R_plot[t_to_show_now] = np.concatenate((R_vert_fl[:, i], R_all[:, idx_of_t_to_show_now],))
+        Z_plot[t_to_show_now] = np.concatenate((Z_vert_fl.T, zspan, ))
+    return R_plot, Z_plot, zspan, hw_all, t
+
+
+def test_core_simulation():
+    R_plot, Z_plot, zspan, hw_all, t = \
+        core_simulation(horiz_cond=5 / 24 / 60, well_length=10, simulation_time=400, well_radius=0.2, porosity=0.3,
+                        initial_VWC=0.1, recharge_duration=30, recharge_rate=30 / 60)
+
+
+
+
 def calculate_Q_slice(K, hw, zspan, R, r_w, r_initial, PSI):
     R_correct = R
     Q_slice = np.zeros_like(zspan)
