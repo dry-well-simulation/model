@@ -7,8 +7,8 @@ EXAGGERATION_FACTOR = 10
 
 
 def core_simulation(horiz_cond, well_length, simulation_time, well_radius, porosity, initial_VWC, recharge_duration,
-                    recharge_rate, anisotropy_ratio=1, tol_radius=0.01, tol_head=0.01, n_time_steps=1000,
-                    n_vertical_slices=100, RungeKutta_sections=4, initial_matric_head=0, output_times=None):
+                    recharge_rate, anisotropy_ratio=1, tol_radius=0.01, tol_head=0.01,
+                    n_vertical_slices=100, RungeKutta_sections=4, initial_matric_head=0, output_times=None, dt=None):
     """
     Perform the entire calculation of the dry well recharge, for specified parameters.
     The units are written here as [m] and [min], but in practice they can be whatever
@@ -25,10 +25,10 @@ def core_simulation(horiz_cond, well_length, simulation_time, well_radius, poros
     :param anisotropy_ratio: float, the ratio of horizontal to vertical hydraulic conductivity [-]
     :param tol_radius: float, wetting front location tolerance [-]
     :param tol_head: float,  well water level tolerance [-]
-    :param n_time_steps: float, number of time steps during simulation [-]
+    :param dt: float, length of time steps during simulation [-]
     :param n_vertical_slices: float, number of vertical slices along well [-]
     :param RungeKutta_sections: int, number of Runge–Kutta sections [-]
-    :param initial_matric_head: float, initial matric head [m]
+    :param initial_matric_head: float, initial matric head [m]. Must be negative.
     :param output_times:  float or nd array, the time(s) at which output is saved and returned [min]
                           if None, will use a default set.
     :return:
@@ -42,15 +42,17 @@ def core_simulation(horiz_cond, well_length, simulation_time, well_radius, poros
     assert isinstance(n_vertical_slices, int)
     assert initial_matric_head <= 0
     vert_cond = horiz_cond / anisotropy_ratio  # vertical conductivity
-    well_section_area = np.pi * well_radius ** 2
-    r_initial = (1 + EPSILON) - initial_matric_head / (well_length - initial_matric_head)
-    # initial relative wetting radius (r_initial > 1, but not much larger than 1)
-    dt_max = well_section_area / (EXAGGERATION_FACTOR * 2 * np.pi * horiz_cond * (well_length - initial_matric_head))
-    if simulation_time / n_time_steps > dt_max:
-        n_time_steps = int(np.ceil(simulation_time / dt_max))
-    t = np.linspace(0, simulation_time, n_time_steps)
+    well_section_area = pi * well_radius ** 2
+    r_initial = 1 + EPSILON  + (- initial_matric_head) / (well_length - initial_matric_head)
+    # The initial relative wetting radius is defined such that r_initial > 1, but not much larger than 1.
+    if dt is None:
+        dt = well_section_area / \
+             (EXAGGERATION_FACTOR * 2 * pi * horiz_cond * (well_length + - initial_matric_head))
+    n_time_steps = int(np.ceil(simulation_time / dt))
+    t = np.linspace(start=0, stop=simulation_time, num=n_time_steps)
     dt_all = np.diff(t)
-    dz_max = recharge_duration * recharge_rate / (EXAGGERATION_FACTOR * 2 * np.pi * well_radius * (well_length - initial_matric_head))
+    dz_max = recharge_duration * recharge_rate \
+             / (EXAGGERATION_FACTOR * 2 * pi * well_radius * (well_length + - initial_matric_head))
     if well_length / n_vertical_slices > dz_max:
         n_vertical_slices = int(np.ceil(well_length / dz_max))
     zspan = np.linspace(0, well_length, n_vertical_slices)  # TODO: chg name
@@ -88,15 +90,18 @@ def core_simulation(horiz_cond, well_length, simulation_time, well_radius, poros
         Q_spill[ti + 1] = next_Q_spill
         Z_vertical[ti + 1] = next_Z
         R_vertical[ti + 1] = next_zR
-        V_total[ti + 1] = V_total[ti] + Qw * dt # total volume of water that was recharged into the well
+        V_total[ti + 1] = V_total[ti] + Qw * dt  # total volume of water that was recharged into the well
         V_pm[ti + 1] = V_total[ti + 1] - next_hw * well_section_area # water volume in porous media is total vol. minus vol. in well.
 
-    Z_vert_origin = Z_vertical - max(Z_vertical) # construct the vertical flow as a reconstruction of the bottom R ????
+    Z_vert_origin = Z_vertical - max(Z_vertical)  # construct the vertical flow as a reconstruction of the bottom R ????
     # R_v = R_all[0, :]
 
     if output_times is None:
-        output_times = np.array([33, 90, 120, 180, 360]) #  times to show in figure
-        # todo: make it relative to T_on, not abs values
+        output_times = [simulation_time]  # times to show in figure
+        if recharge_duration < simulation_time:
+            output_times.append(recharge_duration)
+        output_times = np.sort(output_times)
+
     # h_w = hw_all
     Z_vert_fl = np.flip(Z_vert_origin)
     R_vert_fl = well_radius * np.ones((n_time_steps, len(output_times)))
