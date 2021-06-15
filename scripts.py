@@ -135,8 +135,12 @@ def test_core_simulation():
     well_head_df, wetting_front_location_data = \
         core_simulation(horiz_cond=5 / 24 / 60, well_length=10, simulation_time=400, well_radius=0.2, porosity=0.3,
                         initial_VWC=0.1, recharge_duration=30, recharge_rate=30 / 60)
-
-
+    assert np.isclose(well_head_df['head_in_well'].max(), 9.58752611026923)
+    assert wetting_front_location_data[0]['time'] == 30
+    assert np.isclose(
+        wetting_front_location_data[0]['location_df']['R'].max(),
+        2.0972223499027
+    )
 
 
 def calculate_Q_slice(K, hw, zspan, R, r_w, r_initial, PSI):
