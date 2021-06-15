@@ -161,20 +161,19 @@ def calculate_Q_slice(K, hw, zspan, R, r_w, r_initial, PSI):
 
 
 def calculate_Q_v_slice(K_v, R, r_w):
-    # calc the net vertical flow from each slice, acounting for the slice above
+    # calc the net vertical flow from each slice, accounting for the slice above
     Q_v_slice_all = np.zeros_like(R)
-    R_tmp = R.T  # todo: do we need this?
-    calc_at = R_tmp > r_w
-    Q_v_slice_all[calc_at] = -pi * (R_tmp[calc_at] ** 2 - r_w ** 2) * K_v
+    calc_at = R > r_w
+    Q_v_slice_all[calc_at] = -pi * (R[calc_at] ** 2 - r_w ** 2) * K_v
     single_zero = np.array([0])
     return np.concatenate((-np.diff(Q_v_slice_all), single_zero))
 
 
 def next_radius(K_h, K_v, next_hw, hw, zspan, next_R, R, r_w, r_initial, PSI, n, theta_i, dt, temp_R, O_r, eps_R, RK):
     # todo: use dz instead of zspan[1]
-    Q_h_slice, next_R = calculate_Q_slice(K_h, (next_hw + hw) / 2, zspan, (next_R + R)/ 2, r_w, r_initial, PSI)
+    Q_h_slice, next_R = calculate_Q_slice(K_h, (next_hw + hw) / 2, zspan, (next_R + R) / 2, r_w, r_initial, PSI)
     Q_v_slice = calculate_Q_v_slice(K_v, (next_R + R) / 2, r_w).T
-    next_R = R + (Q_h_slice + Q_v_slice / zspan[1]).T / (2 * pi * ((next_R + R) / 2) * (n-theta_i)) * dt
+    next_R = R + (Q_h_slice + Q_v_slice / zspan[1]).T / (2 * pi * ((next_R + R) / 2) * (n - theta_i)) * dt
     O_r[1] = np.mean(np.abs(next_R - temp_R) / R)
     if O_r[1] < O_r[0]:
         O_r[0] = O_r[1]
@@ -182,16 +181,18 @@ def next_radius(K_h, K_v, next_hw, hw, zspan, next_R, R, r_w, r_initial, PSI, n,
         while O_r[1] > eps_R and O_r[1] > O_r[0]:
             temp_R = next_R
             R_T = R
-            next_R_Q = R + (Q_h_slice + Q_v_slice/ zspan[1]).T / (2 * pi * R * (n-theta_i)) * (dt / RK)
+            next_R_Q = R + (Q_h_slice + Q_v_slice / zspan[1]).T / (2 * pi * R * (n - theta_i)) * (dt / RK)
             for _ in range(RK - 2):
                 R_T = next_R_Q
-                next_R_Q = R_T + (Q_h_slice + Q_v_slice / zspan[1]).T / (2 * pi * ((R_T + next_R_Q) / 2) * (n-theta_i)) * (dt / RK)
+                next_R_Q = R_T + (Q_h_slice + Q_v_slice / zspan[1]).T / (
+                            2 * pi * ((R_T + next_R_Q) / 2) * (n - theta_i)) * (dt / RK)
 
-            next_R = next_R_Q + (Q_h_slice + Q_v_slice / zspan[1]).T / (2 * pi * ((next_R + R_T) / 2) * (n-theta_i)) * (dt / RK)
+            next_R = next_R_Q + (Q_h_slice + Q_v_slice / zspan[1]).T / (
+                        2 * pi * ((next_R + R_T) / 2) * (n - theta_i)) * (dt / RK)
             O_r[1] = np.mean(np.abs(next_R - temp_R) / R)
         Q_h_slice, next_R = calculate_Q_slice(K_h, (next_hw + hw) / 2, zspan, (next_R + R) / 2, r_w, r_initial, PSI)
         Q_v_slice = calculate_Q_v_slice(K_v, (next_R + R) / 2, r_w).T
-        next_R = R + (Q_h_slice - Q_v_slice / zspan[1]).T/ (2 * pi * ((next_R + R) / 2) * (n - theta_i)) * dt
+        next_R = R + (Q_h_slice - Q_v_slice / zspan[1]).T / (2 * pi * ((next_R + R) / 2) * (n - theta_i)) * dt
         O_r[0] = np.mean(np.abs(next_R - temp_R) / R)
     return O_r, next_R
 
@@ -200,7 +201,8 @@ def next_height(K_v, n, theta_i, dt, Z, next_R, R, zspan, r_w, hw, Qw, A, L_w, t
     dz = K_v / (n - theta_i) * dt
     next_Z = Z + dz
     next_zR = next_R[0]
-    Q_pm = np.sum(pi * (next_R ** 2 - R ** 2) * (n - theta_i) * zspan[1]) + dz * pi * (next_zR ** 2 - r_w ** 2) * (n - theta_i)
+    Q_pm = np.sum(pi * (next_R ** 2 - R ** 2) * (n - theta_i) * zspan[1]) + dz * pi * (next_zR ** 2 - r_w ** 2) * (
+                n - theta_i)
     if Q_pm < 0:
         Q_pm = 0
     next_hw_theoretical = hw + (Qw * dt - Q_pm) / A
@@ -212,10 +214,10 @@ def next_height(K_v, n, theta_i, dt, Z, next_R, R, zspan, r_w, hw, Qw, A, L_w, t
         next_hw = next_hw_theoretical
     O_h[1] = np.abs(next_hw - temp_hw) / L_w
 
-    return O_h, next_hw,  next_Q_spill, next_Z, next_zR
+    return O_h, next_hw, next_Q_spill, next_Z, next_zR
 
 
-def compute(dt, Qw, A, K_h, K_v, hw, R, r_w, zspan, L_w, n, theta_i, Z, PSI_i, r_initial, eps_R, eps_h, RK):
+def compute_timestep(dt, Qw, A, K_h, K_v, hw, R, r_w, zspan, L_w, n, theta_i, Z, PSI_i, r_initial, eps_R, eps_h, RK):
     """
     compute water level in well, position of wetting front (around and below the well), and spilled
     discharge rate at a single time step.
@@ -264,6 +266,5 @@ def compute(dt, Qw, A, K_h, K_v, hw, R, r_w, zspan, L_w, n, theta_i, Z, PSI_i, r
             O_h[0] = 1
         else:
             O_h[0] = O_h[1]
-
 
     return next_hw, next_R, next_Q_spill, next_Z, next_zR, dt
