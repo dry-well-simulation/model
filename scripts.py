@@ -272,3 +272,12 @@ def compute_timestep(dt, Qw, A, K_h, K_v, hw, R, r_w, zspan, L_w, n, theta_i, Z,
             O_h[0] = O_h[1]
 
     return next_hw, next_R, next_Q_spill, next_Z, next_zR, dt
+
+
+def plot_add_ons(legend=True, legend_title=None, xlabel=None, ylabel=None, title=None):
+    if legend:
+        plt.legend(title=legend_title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.show()
