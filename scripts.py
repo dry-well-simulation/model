@@ -51,22 +51,26 @@ def core_simulation(horiz_cond, well_length, simulation_time, well_radius, poros
     well_section_area = pi * well_radius ** 2
     r_initial = 1 + EPSILON + (- initial_matric_head) / (well_length - initial_matric_head)
     # The initial relative wetting radius is defined such that r_initial > 1, but not much larger than 1.
-    # compute time step and define times to calculate
-    if dt is None:
-        dt = well_section_area / \
-             (EXAGGERATION_FACTOR * 2 * pi * horiz_cond * (well_length + - initial_matric_head))
-    n_time_steps = int(np.ceil(simulation_time / dt))
-    t = np.linspace(start=0, stop=simulation_time, num=n_time_steps)
 
     if wetting_front_output_times is None:
         wetting_front_output_times = [simulation_time]  # times to show in figure
         if recharge_duration < simulation_time:
             wetting_front_output_times.append(recharge_duration)
+
     wetting_front_output_times = np.sort(wetting_front_output_times)
     assert np.all(wetting_front_output_times >= 0)
-    assert np.all(np.diff(wetting_front_output_times) > 0)
+    assert np.all(wetting_front_output_times <= simulation_time)
 
-    # t = np.sort(np.concatenate(t, wetting_front_output_times))  # todo: add this later
+    # compute time step and define times to calculate
+    if dt is None:
+        dt = well_section_area / \
+             (EXAGGERATION_FACTOR * 2 * pi * horiz_cond * (well_length + - initial_matric_head))
+    # vector of times of the start of each time step and also the end of the last time step (end of simulation)
+    t = np.linspace(start=0, stop=simulation_time, num=int(np.ceil(simulation_time / dt)) + 1)
+    # add the wetting front output times to the array; keep only unique values
+    t = np.sort(np.unique(np.concatenate([t, np.array(wetting_front_output_times)])))
+
+    n_time_steps = len(t) - 1
 
     dt_all = np.diff(t)
     dz_max = recharge_duration * recharge_rate \
@@ -76,16 +80,16 @@ def core_simulation(horiz_cond, well_length, simulation_time, well_radius, poros
     zspan = np.linspace(0, well_length, n_vertical_slices)  # TODO: chg name
 
     Qw_all = np.where(t <= recharge_duration, recharge_rate, 0)
-    hw_all = np.zeros((n_time_steps,))
-    Q_spill = np.zeros((n_time_steps,))
-    V_total = np.zeros((n_time_steps,))
-    V_pm = np.zeros((n_time_steps,))
-    R_all = np.zeros((n_vertical_slices, n_time_steps))
+    hw_all = np.zeros((n_time_steps + 1,))
+    Q_spill = np.zeros((n_time_steps + 1,))
+    V_total = np.zeros((n_time_steps + 1,))
+    V_pm = np.zeros((n_time_steps + 1,))
+    R_all = np.zeros((n_vertical_slices, n_time_steps + 1))  # todo: do not save all data. could be memory intensive and we're risking out of mem. just the ones which we need for plots
     R_all[:, 0] = well_radius
-    Z_vertical = np.zeros((n_time_steps,))
-    R_vertical = well_radius * np.ones((n_time_steps,))
+    Z_vertical = np.zeros((n_time_steps + 1,))
+    R_vertical = well_radius * np.ones((n_time_steps + 1,))
 
-    for ti in range(n_time_steps - 1):
+    for ti in range(n_time_steps):
         dt = dt_all[ti]
         Qw = (Qw_all[ti] + Qw_all[ti + 1]) / 2  # present Qw
         hw = hw_all[ti]
@@ -96,7 +100,6 @@ def core_simulation(horiz_cond, well_length, simulation_time, well_radius, poros
             compute_timestep(dt, Qw, well_section_area, horiz_cond, vert_cond, hw, R, well_radius, zspan, well_length,
                              porosity, initial_VWC, Z, initial_matric_head, r_initial, tol_radius, tol_head,
                              RungeKutta_sections)
-        # todo: chg to "compute_timestep"
         if dt2 < dt:
             dt2_2 = dt2
             while dt2_2 <= dt:
@@ -117,7 +120,7 @@ def core_simulation(horiz_cond, well_length, simulation_time, well_radius, poros
     # todo: the following section is ambigious, need to be rewritten!
     Z_vert_origin = Z_vertical - max(Z_vertical)  # construct the vertical flow as a reconstruction of the bottom R ????
     Z_vert_fl = np.flip(Z_vert_origin)
-    R_vert_fl = well_radius * np.ones((n_time_steps, len(wetting_front_output_times)))
+    R_vert_fl = well_radius * np.ones((n_time_steps + 1, len(wetting_front_output_times)))
     wetting_front_location_data = []
     for i, t_to_show_now in enumerate(wetting_front_output_times):
         idx_of_t_to_show_now = np.argwhere(t >= t_to_show_now)[0][0]  # todo: what if this fails? do something
@@ -135,11 +138,13 @@ def test_core_simulation():
     well_head_df, wetting_front_location_data = \
         core_simulation(horiz_cond=5 / 24 / 60, well_length=10, simulation_time=400, well_radius=0.2, porosity=0.3,
                         initial_VWC=0.1, recharge_duration=30, recharge_rate=30 / 60)
-    assert np.isclose(well_head_df['head_in_well'].max(), 9.58752611026923)
+    # print(well_head_df['head_in_well'].max())
+    assert np.isclose(well_head_df['head_in_well'].max(), 9.5894244)
     assert wetting_front_location_data[0]['time'] == 30
+    # print( wetting_front_location_data[0]['location_df']['R'].max())
     assert np.isclose(
         wetting_front_location_data[0]['location_df']['R'].max(),
-        2.0972223499027
+        2.09687
     )
 
 
@@ -173,32 +178,32 @@ def calculate_Q_v_slice(K_v, R, r_w):
     return np.concatenate((-np.diff(Q_v_slice_all), single_zero))
 
 
-def next_radius(K_h, K_v, next_hw, hw, zspan, next_R, R, r_w, r_initial, PSI, n, theta_i, dt, temp_R, O_r, eps_R, RK):
+def next_radius(K_h, K_v, next_hw, hw, zspan, next_R, R, r_w, r_initial, PSI, n, theta_i, dt, temp_R, previous_convergence_r, eps_R, RK):
     # todo: use dz instead of zspan[1]
     Q_h_slice, next_R = calculate_Q_slice(K_h, (next_hw + hw) / 2, zspan, (next_R + R) / 2, r_w, r_initial, PSI)
     Q_v_slice = calculate_Q_v_slice(K_v, (next_R + R) / 2, r_w).T
     next_R = R + (Q_h_slice + Q_v_slice / zspan[1]).T / (2 * pi * ((next_R + R) / 2) * (n - theta_i)) * dt
-    O_r[1] = np.mean(np.abs(next_R - temp_R) / R)
-    if O_r[1] < O_r[0]:
-        O_r[0] = O_r[1]
+    current_convergence_r = np.mean(np.abs(next_R - temp_R) / R)
+    if current_convergence_r < previous_convergence_r:
+        previous_convergence_r = current_convergence_r
     else:
-        while O_r[1] > eps_R and O_r[1] > O_r[0]:
-            temp_R = next_R
-            R_T = R
+        while current_convergence_r > eps_R and current_convergence_r > previous_convergence_r:
+            temp_R = next_R.copy()  # todo: .copy()
+            R_T = R.copy() # no need for that, just do next_R_Q +
             next_R_Q = R + (Q_h_slice + Q_v_slice / zspan[1]).T / (2 * pi * R * (n - theta_i)) * (dt / RK)
             for _ in range(RK - 2):
-                R_T = next_R_Q
+                R_T = next_R_Q.copy()
                 next_R_Q = R_T + (Q_h_slice + Q_v_slice / zspan[1]).T / (
                             2 * pi * ((R_T + next_R_Q) / 2) * (n - theta_i)) * (dt / RK)
 
             next_R = next_R_Q + (Q_h_slice + Q_v_slice / zspan[1]).T / (
                         2 * pi * ((next_R + R_T) / 2) * (n - theta_i)) * (dt / RK)
-            O_r[1] = np.mean(np.abs(next_R - temp_R) / R)
+            current_convergence_r = np.mean(np.abs(next_R - temp_R) / R)
         Q_h_slice, next_R = calculate_Q_slice(K_h, (next_hw + hw) / 2, zspan, (next_R + R) / 2, r_w, r_initial, PSI)
         Q_v_slice = calculate_Q_v_slice(K_v, (next_R + R) / 2, r_w).T
         next_R = R + (Q_h_slice - Q_v_slice / zspan[1]).T / (2 * pi * ((next_R + R) / 2) * (n - theta_i)) * dt
-        O_r[0] = np.mean(np.abs(next_R - temp_R) / R)
-    return O_r, next_R
+        previous_convergence_r = np.mean(np.abs(next_R - temp_R) / R)
+    return previous_convergence_r, next_R
 
 
 def next_height(K_v, n, theta_i, dt, Z, next_R, R, zspan, r_w, hw, Qw, A, L_w, temp_hw, O_h):
@@ -250,18 +255,18 @@ def compute_timestep(dt, Qw, A, K_h, K_v, hw, R, r_w, zspan, L_w, n, theta_i, Z,
         next_Q_spill: (float) The discharge rate of spill from the well top
         next_Z: (float) Z at the end of the time step
         next_zR (float) R at Z at the end of the time step
-        dt2 (float) the time step used in practice
+        dt (float) the time step used in practice
     """
     # initialize
-    O_r = [1, 1]  # relative change of R between iterations... todo: find better name
+    previous_convergence_r = 1  # relative change of R between iterations
     O_h = [1, 1]
     next_R = R
     next_hw = hw
-    while O_r[0] > eps_R or O_h[0] > eps_h:
+    while previous_convergence_r > eps_R or O_h[0] > eps_h:
         temp_R = next_R
         temp_hw = next_hw
-        O_r, next_R = next_radius(K_h, K_v, next_hw, hw, zspan, next_R, R, r_w, r_initial, PSI_i, n, theta_i, dt,
-                                  temp_R, O_r, eps_R, RK)
+        previous_convergence_r, next_R = next_radius(K_h, K_v, next_hw, hw, zspan, next_R, R, r_w, r_initial, PSI_i, n, theta_i, dt,
+                                  temp_R, previous_convergence_r, eps_R, RK)
 
         O_h, next_hw, next_Q_spill, next_Z, next_zR = \
             next_height(K_v, n, theta_i, dt, Z, next_R, R, zspan, r_w, hw, Qw, A, L_w, temp_hw, O_h)
