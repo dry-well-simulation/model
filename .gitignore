@@ -1,5 +1,3 @@
-myplot.png
+*.png
 .idea/
-.idea/workspace.xml
 __pycache__/
-__pycache__/scripts.cpython-39.pyc
