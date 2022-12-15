@@ -13,6 +13,7 @@ def core_simulation(horiz_cond, well_length, simulation_time, well_radius, poros
     Perform the entire calculation of the dry well recharge, for specified parameters.
     The units are written here as [m] and [min], but in practice they can be whatever
     length/ time units, as long as you are consistent.
+    
     :param horiz_cond: float, horizontal hydraulic conductivity [m/min]
     :param well_length: float, the length of the well, assumed to be screened throughout  [m]
     :param simulation_time: float, total simulation time [min]
@@ -53,17 +54,17 @@ def core_simulation(horiz_cond, well_length, simulation_time, well_radius, poros
     dz_max = recharge_duration * recharge_rate / (EXAGGERATION_FACTOR * 2 * np.pi * well_radius * (well_length - initial_matric_head))
     if well_length / n_vertical_slices > dz_max:
         n_vertical_slices = int(np.ceil(well_length / dz_max))
-    zspan = np.linspace(0, well_length, n_vertical_slices)  # TODO: chg name
+    zspan = np.linspace(0, well_length, n_vertical_slices)  
 
     Qw_all = np.where(t <= recharge_duration, recharge_rate, 0)
-    hw_all = np.zeros((n_time_steps,))  # TODO: change to np.nan ?
-    Q_spill = np.zeros((n_time_steps,))  # TODO: change to np.nan ?
-    V_total = np.zeros((n_time_steps,))  # TODO: change to np.nan ?
-    V_pm = np.zeros((n_time_steps,))  # TODO: change to np.nan ?
-    R_all = np.zeros((n_vertical_slices, n_time_steps))  # TODO: change to np.nan ?
+    hw_all = np.zeros((n_time_steps,))  
+    Q_spill = np.zeros((n_time_steps,))  
+    V_total = np.zeros((n_time_steps,))  
+    V_pm = np.zeros((n_time_steps,))  
+    R_all = np.zeros((n_vertical_slices, n_time_steps))  
     R_all[:, 0] = well_radius
-    Z_vertical = np.zeros((n_time_steps,))  # TODO: change to np.nan ?
-    R_vertical = well_radius * np.ones((n_time_steps,))  # TODO: change to np.nan ?
+    Z_vertical = np.zeros((n_time_steps,)) 
+    R_vertical = well_radius * np.ones((n_time_steps,))  
 
     for ti in range(n_time_steps - 1):
         dt = dt_all[ti]
@@ -73,14 +74,14 @@ def core_simulation(horiz_cond, well_length, simulation_time, well_radius, poros
         Z = Z_vertical[ti]
 
         next_hw, next_R, next_Q_spill, next_Z, next_zR, dt2 = \
-            compute(dt, Qw, well_section_area, horiz_cond, vert_cond, hw, R, well_radius, zspan, well_length, porosity, initial_VWC, Z, initial_matric_head,
+            compute_timestep(dt, Qw, well_section_area, horiz_cond, vert_cond, hw, R, well_radius, zspan, well_length, porosity, initial_VWC, Z, initial_matric_head,
                     r_initial, tol_radius, tol_head, RungeKutta_sections)
-        # todo: chg to "compute_timestep"
+        
         if dt2 < dt:
             dt2_2 = dt2
             while dt2_2 <= dt:
                 next_hw, next_R, next_Q_spill, next_Z, next_zR, dt2 = \
-                    compute(dt2, Qw, well_section_area, horiz_cond, vert_cond, next_hw, next_R, well_radius, zspan, well_length, porosity, initial_VWC, next_Z, initial_matric_head,
+                    compute_timestep(dt2, Qw, well_section_area, horiz_cond, vert_cond, next_hw, next_R, well_radius, zspan, well_length, porosity, initial_VWC, next_Z, initial_matric_head,
                             r_initial, tol_radius, tol_head, RungeKutta_sections)
                 dt2_2 = dt2_2 + dt2
         hw_all[ti + 1] = next_hw
@@ -91,23 +92,24 @@ def core_simulation(horiz_cond, well_length, simulation_time, well_radius, poros
         V_total[ti + 1] = V_total[ti] + Qw * dt # total volume of water that was recharged into the well
         V_pm[ti + 1] = V_total[ti + 1] - next_hw * well_section_area # water volume in porous media is total vol. minus vol. in well.
 
-    Z_vert_origin = Z_vertical - max(Z_vertical) # construct the vertical flow as a reconstruction of the bottom R ????
-    # R_v = R_all[0, :]
+    Z_vert_origin = Z_vertical - max(Z_vertical)
 
     if output_times is None:
-        output_times = np.array([33, 90, 120, 180, 360]) #  times to show in figure
-        # todo: make it relative to T_on, not abs values
-    # h_w = hw_all
+        #  times to show in figure
+        output_times = recharge_duration * np.array([1.1, 3, 4.5, 6, 12])
+    
+    output_times = output_times[output_times <= simulation_time]
+
     Z_vert_fl = np.flip(Z_vert_origin)
     R_vert_fl = well_radius * np.ones((n_time_steps, len(output_times)))
     R_plot = dict()
     Z_plot = dict()
-    for i, t_to_show_now in enumerate(output_times):
-        idx_of_t_to_show_now = np.argwhere(t >= t_to_show_now)[0][0]  # todo: what if this fails? do something
+    for i, output_time in enumerate(output_times):
+        idx_of_t_to_show_now = np.argwhere(t >= output_time)[0][0]
         R_vert_fl_tmp = np.flip(R_vertical[:idx_of_t_to_show_now])
-        R_vert_fl[:idx_of_t_to_show_now, i] = R_vert_fl_tmp  # not sure this will work
-        R_plot[t_to_show_now] = np.concatenate((R_vert_fl[:, i], R_all[:, idx_of_t_to_show_now],))
-        Z_plot[t_to_show_now] = np.concatenate((Z_vert_fl.T, zspan, ))
+        R_vert_fl[:idx_of_t_to_show_now, i] = R_vert_fl_tmp  
+        R_plot[output_time] = np.concatenate((R_vert_fl[:, i], R_all[:, idx_of_t_to_show_now],))
+        Z_plot[output_time] = np.concatenate((Z_vert_fl.T, zspan, ))
     return R_plot, Z_plot, zspan, hw_all, t
 
 
@@ -150,16 +152,16 @@ def calculate_Q_v_slice(K_v, R, r_w):
     return np.concatenate((-np.diff(Q_v_slice_all), single_zero))
 
 
-def next_radius(K_h, K_v, next_hw, hw, zspan, next_R, R, r_w, r_initial, PSI, n, theta_i, dt, temp_R, O_r, eps_R, RK):
+def next_radius(K_h, K_v, next_hw, hw, zspan, next_R, R, r_w, r_initial, PSI, n, theta_i, dt, temp_R, r_deviation_previous, r_deviation_now, eps_R, RK):
     # todo: use dz instead of zspan[1]
     Q_h_slice, next_R = calculate_Q_slice(K_h, (next_hw + hw) / 2, zspan, (next_R + R)/ 2, r_w, r_initial, PSI)
     Q_v_slice = calculate_Q_v_slice(K_v, (next_R + R) / 2, r_w).T
     next_R = R + (Q_h_slice + Q_v_slice / zspan[1]).T / (2 * pi * ((next_R + R) / 2) * (n-theta_i)) * dt
-    O_r[1] = np.mean(np.abs(next_R - temp_R) / R)
-    if O_r[1] < O_r[0]:
-        O_r[0] = O_r[1]
+    r_deviation_now = np.mean(np.abs(next_R - temp_R) / R) 
+    if r_deviation_now < r_deviation_previous:
+        r_deviation_previous = r_deviation_now
     else:
-        while O_r[1] > eps_R and O_r[1] > O_r[0]:
+        while r_deviation_now > eps_R and r_deviation_now > r_deviation_previous:
             temp_R = next_R
             R_T = R
             next_R_Q = R + (Q_h_slice + Q_v_slice/ zspan[1]).T / (2 * pi * R * (n-theta_i)) * (dt / RK)
@@ -168,15 +170,15 @@ def next_radius(K_h, K_v, next_hw, hw, zspan, next_R, R, r_w, r_initial, PSI, n,
                 next_R_Q = R_T + (Q_h_slice + Q_v_slice / zspan[1]).T / (2 * pi * ((R_T + next_R_Q) / 2) * (n-theta_i)) * (dt / RK)
 
             next_R = next_R_Q + (Q_h_slice + Q_v_slice / zspan[1]).T / (2 * pi * ((next_R + R_T) / 2) * (n-theta_i)) * (dt / RK)
-            O_r[1] = np.mean(np.abs(next_R - temp_R) / R)
+            r_deviation_now = np.mean(np.abs(next_R - temp_R) / R)
         Q_h_slice, next_R = calculate_Q_slice(K_h, (next_hw + hw) / 2, zspan, (next_R + R) / 2, r_w, r_initial, PSI)
         Q_v_slice = calculate_Q_v_slice(K_v, (next_R + R) / 2, r_w).T
         next_R = R + (Q_h_slice - Q_v_slice / zspan[1]).T/ (2 * pi * ((next_R + R) / 2) * (n - theta_i)) * dt
-        O_r[0] = np.mean(np.abs(next_R - temp_R) / R)
-    return O_r, next_R
+        r_deviation_previous = np.mean(np.abs(next_R - temp_R) / R)
+    return r_deviation_previous, r_deviation_now, next_R
 
 
-def next_height(K_v, n, theta_i, dt, Z, next_R, R, zspan, r_w, hw, Qw, A, L_w, temp_hw, O_h):
+def next_height(K_v, n, theta_i, dt, Z, next_R, R, zspan, r_w, hw, Qw, A, L_w, temp_hw, h_deviation_now):
     dz = K_v / (n - theta_i) * dt
     next_Z = Z + dz
     next_zR = next_R[0]
@@ -190,12 +192,12 @@ def next_height(K_v, n, theta_i, dt, Z, next_R, R, zspan, r_w, hw, Qw, A, L_w, t
     else:
         next_Q_spill = 0
         next_hw = next_hw_theoretical
-    O_h[1] = np.abs(next_hw - temp_hw) / L_w
+    h_deviation_now = np.abs(next_hw - temp_hw) / L_w
 
-    return O_h, next_hw,  next_Q_spill, next_Z, next_zR
+    return h_deviation_now, next_hw, next_Q_spill, next_Z, next_zR
 
 
-def compute(dt, Qw, A, K_h, K_v, hw, R, r_w, zspan, L_w, n, theta_i, Z, PSI_i, r_initial, eps_R, eps_h, RK):
+def compute_timestep(dt, Qw, A, K_h, K_v, hw, R, r_w, zspan, L_w, n, theta_i, Z, PSI_i, r_initial, eps_R, eps_h, RK):
     """
     compute water level in well, position of wetting front (around and below the well), and spilled
     discharge rate at a single time step.
@@ -227,23 +229,24 @@ def compute(dt, Qw, A, K_h, K_v, hw, R, r_w, zspan, L_w, n, theta_i, Z, PSI_i, r
         dt2 (float) the time step used in practice
     """
     # initialize
-    O_r = [1, 1]  # relative change of R between iterations... todo: find better name
-    O_h = [1, 1]
+    r_deviation_previous, r_deviation_now = 1, 1  # relative change of R between iterations
+    h_deviation_previous, h_deviation_now = 1, 1
     next_R = R
     next_hw = hw
-    while O_r[0] > eps_R or O_h[0] > eps_h:
+    while r_deviation_previous > eps_R or h_deviation_previous > eps_h:
         temp_R = next_R
         temp_hw = next_hw
-        O_r, next_R = next_radius(K_h, K_v, next_hw, hw, zspan, next_R, R, r_w, r_initial, PSI_i, n, theta_i, dt,
-                                  temp_R, O_r, eps_R, RK)
+        r_deviation_previous, r_deviation_now, next_R = \
+            next_radius(K_h, K_v, next_hw, hw, zspan, next_R, R, r_w, r_initial, PSI_i, n, theta_i, dt,
+                        temp_R, r_deviation_previous, r_deviation_now, eps_R, RK
+                        )
 
-        O_h, next_hw, next_Q_spill, next_Z, next_zR = \
-            next_height(K_v, n, theta_i, dt, Z, next_R, R, zspan, r_w, hw, Qw, A, L_w, temp_hw, O_h)
-        if O_h[1] >= O_h[0] or next_hw < 0:
+        h_deviation_now, next_hw, next_Q_spill, next_Z, next_zR = \
+            next_height(K_v, n, theta_i, dt, Z, next_R, R, zspan, r_w, hw, Qw, A, L_w, temp_hw, h_deviation_now)
+        if h_deviation_now >= h_deviation_previous or next_hw < 0:
             dt = dt / 2
-            O_h[0] = 1
+            h_deviation_previous = 1
         else:
-            O_h[0] = O_h[1]
-
+            h_deviation_previous = h_deviation_now
 
     return next_hw, next_R, next_Q_spill, next_Z, next_zR, dt
