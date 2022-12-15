@@ -1,5 +1,5 @@
 # Dry well simulation code 
-This code simulates flow from a recharrge well (drywell) during and following a recharge event.
+This code simulates flow from a recharge well (drywell) during and following a recharge event.
 
 In order to perform the simulation you will need to provide the following information:
 - geometrical properties of the well (depth and diameter), 
