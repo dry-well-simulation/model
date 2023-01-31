@@ -13,3 +13,5 @@ For a quick example of a typical simulation, run
 
 Contributers: Ziv Moreno, Tamir Kamai, Amir Paster, Amit Ramon
 
+For full details on the development and validation of the model, see this WRR [paper](https://doi.org/10.1029/2022WR033554).
+
